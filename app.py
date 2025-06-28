@@ -1,3 +1,9 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+import os
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'chave_default_insegura')  # Defina uma chave segura
+
 from flask import Flask, render_template, request, redirect, url_for
 import os, json
 from datetime import datetime
