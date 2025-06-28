@@ -1,58 +1,77 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-import os
-
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'chave_default_insegura')  # Defina uma chave segura
-
-from flask import Flask, render_template, request, redirect, url_for
+from werkzeug.utils import secure_filename
 import os, json
-from datetime import datetime
 
 app = Flask(__name__)
-UPLOAD_FOLDER = 'static/uploads'
+app.secret_key = os.environ.get('SECRET_KEY', 'chave_default_insegura')
+
 POSTS_FILE = 'posts.json'
 
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-def load_posts():
+def carregar_posts():
     if os.path.exists(POSTS_FILE):
         with open(POSTS_FILE, 'r') as f:
             return json.load(f)
     return []
 
-def save_posts(posts):
+def salvar_post(post):
+    posts = carregar_posts()
+    posts.append(post)
     with open(POSTS_FILE, 'w') as f:
-        json.dump(posts, f, indent=4)
+        json.dump(posts, f)
 
 @app.route('/')
 def index():
-    posts = load_posts()
+    posts = carregar_posts()
     return render_template('index.html', posts=posts)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if username == os.environ.get('ADMIN_USERNAME') and password == os.environ.get('ADMIN_PASSWORD'):
+            session['logged_in'] = True
+            flash('Login realizado com sucesso!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Usuário ou senha incorretos.', 'danger')
+            return redirect(url_for('login'))
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    flash('Você saiu da conta.', 'info')
+    return redirect(url_for('index'))
 
 @app.route('/new', methods=['GET', 'POST'])
 def new_post():
+    if not session.get('logged_in'):
+        flash('Acesso restrito.', 'danger')
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
-        title = request.form['title']
-        description = request.form['description']
-        image = request.files['image']
+        titulo = request.form['titulo']
+        descricao = request.form['descricao']
+        imagem = request.files['imagem']
+        nome_imagem = secure_filename(imagem.filename)
+        imagem.save(os.path.join('static', nome_imagem))
 
-        if image and image.filename != '':
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image.filename)
-            image.save(image_path)
-            image_url = image_path
+        if 'background' in request.files:
+            bg = request.files['background']
+            if bg and bg.filename:
+                bg.save(os.path.join('static', 'background.jpg'))
 
-            posts = load_posts()
-            posts.insert(0, {
-                'title': title,
-                'description': description,
-                'image_url': image_url,
-                'date': datetime.now().strftime("%Y-%m-%d %H:%M")
-            })
-            save_posts(posts)
-            return redirect(url_for('index'))
+        post = {
+            'titulo': titulo,
+            'descricao': descricao,
+            'imagem': nome_imagem
+        }
+        salvar_post(post)
+        flash('Post criado com sucesso!', 'success')
+        return redirect(url_for('index'))
 
-    return render_template('new_post.html')
+    return render_template('new.html')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
